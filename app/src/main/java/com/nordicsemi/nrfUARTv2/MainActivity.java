@@ -70,6 +70,7 @@ import android.widget.Toast;
 public class MainActivity extends Activity implements RadioGroup.OnCheckedChangeListener {
     private static final int REQUEST_SELECT_DEVICE = 1;
     private static final int REQUEST_ENABLE_BT = 2;
+    private static final int REQUEST_SELECT_FILE = 3;
     private static final int UART_PROFILE_READY = 10;
     public static final String TAG = "nRFUART";
     private static final int UART_PROFILE_CONNECTED = 20;
@@ -85,7 +86,10 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
     private ListView messageListView;
     private ArrayAdapter<String> listAdapter;
     private Button btnConnectDisconnect,btnSend;
+    private Button btnSelectFile;
     private EditText edtMessage;
+    private boolean bSendFile = false;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -102,11 +106,10 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
         messageListView.setDivider(null);
         btnConnectDisconnect=(Button) findViewById(R.id.btn_select);
         btnSend=(Button) findViewById(R.id.sendButton);
+        btnSelectFile = (Button) findViewById(R.id.selectFile);
         edtMessage = (EditText) findViewById(R.id.sendText);
         service_init();
 
-     
-       
         // Handle Disconnect & Connect button
         btnConnectDisconnect.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -118,9 +121,9 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
                 }
                 else {
                 	if (btnConnectDisconnect.getText().equals("Connect")){
-                		
+
                 		//Connect button pressed, open DeviceListActivity class, with popup windows that scan for devices
-                		
+
             			Intent newIntent = new Intent(MainActivity.this, DeviceListActivity.class);
             			startActivityForResult(newIntent, REQUEST_SELECT_DEVICE);
         			} else {
@@ -128,40 +131,75 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
         				if (mDevice!=null)
         				{
         					mService.disconnect();
-        					
+
         				}
         			}
                 }
             }
         });
+
         // Handle Send button
         btnSend.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-            	EditText editText = (EditText) findViewById(R.id.sendText);
-            	String message = editText.getText().toString();
-            	byte[] value;
-				try {
-					//send data to service
-					value = message.getBytes("UTF-8");
-					mService.writeRXCharacteristic(value);
-					//Update the log with time stamp
-					String currentDateTimeString = DateFormat.getTimeInstance().format(new Date());
-					listAdapter.add("["+currentDateTimeString+"] TX: "+ message);
-               	 	messageListView.smoothScrollToPosition(listAdapter.getCount() - 1);
-               	 	edtMessage.setText("");
-				} catch (UnsupportedEncodingException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-                
+                if (bSendFile) {
+                    // send upgrade file
+                    new AlertDialog.Builder(MainActivity.this).setTitle("Sprite")
+                            .setMessage("Are you sure upgrade nRF device?")
+                            .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    finish();
+                                    // starting upgrade
+                                    edtMessage.setText("0%");
+                                    btnSelectFile.setEnabled(false);
+                                    btnSend.setEnabled(false);
+                                }
+                            }).setNegativeButton("No", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            edtMessage.setText("");
+                            bSendFile = false;
+                            finish();
+                        }
+                    }).show();
+                } else {
+                    EditText editText = (EditText) findViewById(R.id.sendText);
+                    String message = editText.getText().toString();
+                    byte[] value;
+                    try {
+                        //send data to service
+                        value = message.getBytes("UTF-8");
+                        mService.writeRXCharacteristic(value);
+                        //Update the log with time stamp
+                        String currentDateTimeString = DateFormat.getTimeInstance().format(new Date());
+                        listAdapter.add("[" + currentDateTimeString + "] TX: " + message);
+                        messageListView.smoothScrollToPosition(listAdapter.getCount() - 1);
+                        edtMessage.setText("");
+                    } catch (UnsupportedEncodingException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                }
             }
         });
-     
+
+        // Handle Select File
+        btnSelectFile.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                // 任意类型
+                intent.setType("*/*");
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                startActivityForResult(intent, REQUEST_SELECT_FILE);
+            }
+        });
+
         // Set initial UI state
-        
+
     }
-    
+
     //UART service connected/disconnected
     private ServiceConnection mServiceConnection = new ServiceConnection() {
         public void onServiceConnected(ComponentName className, IBinder rawBinder) {
@@ -182,10 +220,10 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
 
     private Handler mHandler = new Handler() {
         @Override
-        
-        //Handler events that received from UART service 
+
+        //Handler events that received from UART service
         public void handleMessage(Message msg) {
-  
+
         }
     };
 
@@ -204,6 +242,7 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
                              btnConnectDisconnect.setText("Disconnect");
                              edtMessage.setEnabled(true);
                              btnSend.setEnabled(true);
+                             btnSelectFile.setEnabled(true);
                              ((TextView) findViewById(R.id.deviceName)).setText(mDevice.getName()+ " - ready");
                              listAdapter.add("["+currentDateTimeString+"] Connected to: "+ mDevice.getName());
                         	 	messageListView.smoothScrollToPosition(listAdapter.getCount() - 1);
@@ -211,7 +250,7 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
                      }
             	 });
             }
-           
+
           //*********************//
             if (action.equals(UartService.ACTION_GATT_DISCONNECTED)) {
             	 runOnUiThread(new Runnable() {
@@ -226,19 +265,19 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
                              mState = UART_PROFILE_DISCONNECTED;
                              mService.close();
                             //setUiState();
-                         
+
                      }
                  });
             }
-            
-          
+
+
           //*********************//
             if (action.equals(UartService.ACTION_GATT_SERVICES_DISCOVERED)) {
              	 mService.enableTXNotification();
             }
           //*********************//
             if (action.equals(UartService.ACTION_DATA_AVAILABLE)) {
-              
+
                  final byte[] txValue = intent.getByteArrayExtra(UartService.EXTRA_DATA);
                  runOnUiThread(new Runnable() {
                      public void run() {
@@ -247,7 +286,7 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
                          	String currentDateTimeString = DateFormat.getTimeInstance().format(new Date());
                         	 	listAdapter.add("["+currentDateTimeString+"] RX: "+text);
                         	 	messageListView.smoothScrollToPosition(listAdapter.getCount() - 1);
-                        	
+
                          } catch (Exception e) {
                              Log.e(TAG, e.toString());
                          }
@@ -259,15 +298,15 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
             	showMessage("Device doesn't support UART. Disconnecting");
             	mService.disconnect();
             }
-            
-            
+
+
         }
     };
 
     private void service_init() {
         Intent bindIntent = new Intent(this, UartService.class);
         bindService(bindIntent, mServiceConnection, Context.BIND_AUTO_CREATE);
-  
+
         LocalBroadcastManager.getInstance(this).registerReceiver(UARTStatusChangeReceiver, makeGattUpdateIntentFilter());
     }
     private static IntentFilter makeGattUpdateIntentFilter() {
@@ -288,16 +327,16 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
     public void onDestroy() {
     	 super.onDestroy();
         Log.d(TAG, "onDestroy()");
-        
+
         try {
         	LocalBroadcastManager.getInstance(this).unregisterReceiver(UARTStatusChangeReceiver);
         } catch (Exception ignore) {
             Log.e(TAG, ignore.toString());
-        } 
+        }
         unbindService(mServiceConnection);
         mService.stopSelf();
         mService= null;
-       
+
     }
 
     @Override
@@ -327,7 +366,7 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
             Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             startActivityForResult(enableIntent, REQUEST_ENABLE_BT);
         }
- 
+
     }
 
     @Override
@@ -344,11 +383,11 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
             if (resultCode == Activity.RESULT_OK && data != null) {
                 String deviceAddress = data.getStringExtra(BluetoothDevice.EXTRA_DEVICE);
                 mDevice = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(deviceAddress);
-               
+
                 Log.d(TAG, "... onActivityResultdevice.address==" + mDevice + "mserviceValue" + mService);
                 ((TextView) findViewById(R.id.deviceName)).setText(mDevice.getName()+ " - connecting");
                 mService.connect(deviceAddress);
-                            
+
 
             }
             break;
@@ -364,6 +403,15 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
                 finish();
             }
             break;
+        case REQUEST_SELECT_FILE:
+            if (resultCode == Activity.RESULT_OK) {
+                Uri uri = data.getData();
+                String path = uri.getPath().toString();
+                Toast.makeText(this, "File path:" + path, Toast.LENGTH_SHORT).show();
+                edtMessage.setText(path);
+                bSendFile = true;
+            }
+            break;
         default:
             Log.e(TAG, "wrong request code");
             break;
@@ -372,13 +420,13 @@ public class MainActivity extends Activity implements RadioGroup.OnCheckedChange
 
     @Override
     public void onCheckedChanged(RadioGroup group, int checkedId) {
-       
+
     }
 
-    
+
     private void showMessage(String msg) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
-  
+
     }
 
     @Override
